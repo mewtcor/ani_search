@@ -15,7 +15,7 @@ import platform
 # Initialize WebDriver
 chromedriver_path = r"C:\Users\mewtc\coding\python\scraping\chromedriver.exe"
 chrome_options = Options()
-chrome_options.add_argument("--headless")
+# chrome_options.add_argument("--headless")
 service = Service(executable_path=chromedriver_path, log_path=os.devnull)
 driver = webdriver.Chrome(service=service, options=chrome_options)
 
@@ -43,7 +43,7 @@ def checkbutton_callback(option):
 def run_scraper(search_term, results_text, episodes_text, m3u8_entry, filter_option=None):
     try:
         driver.get("https://animension.to/")
-        
+
         search_box = driver.find_element(By.XPATH, "//input[@class='search-live']")
         search_box.send_keys(search_term)
         submit_button = driver.find_element(By.XPATH, "//button[@id='submit']")
@@ -314,6 +314,5 @@ popular_text.pack(fill=tk.BOTH, expand=True)
 load_initial_website()
 update_trending_animes()
 update_popular_animes()
-
 # Start the Tkinter event loop
 root.mainloop()
