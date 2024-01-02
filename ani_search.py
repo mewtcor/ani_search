@@ -9,13 +9,18 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+import time
 import os
 import platform
 
 # Initialize WebDriver
 chromedriver_path = r"C:\Users\mewtc\coding\python\scraping\chromedriver.exe"
+ublock_origin_path = r'C:\Users\mewtc\coding\python\scraping\ublockorigin.crx'
 chrome_options = Options()
 # chrome_options.add_argument("--headless")
+chrome_options.add_argument("window-size=1920x1080")  # Set a window size
+chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')  # Set a user-agent
+chrome_options.add_extension(ublock_origin_path)
 service = Service(executable_path=chromedriver_path, log_path=os.devnull)
 driver = webdriver.Chrome(service=service, options=chrome_options)
 
@@ -92,7 +97,6 @@ def run_scraper(search_term, results_text, episodes_text, m3u8_entry, filter_opt
         results_text.insert(tk.END, f"Error: {str(e)}\n")
         results_text.config(state=tk.DISABLED)
 
-# Rest of the existing functions...
 def fetch_episodes():
     global episode_list_url
     choice = root.choice.get()
@@ -104,6 +108,12 @@ def fetch_episodes():
 
     selected_title = root.title_elements[int(choice) - 1]
     selected_title.click()
+
+    # Call a new function to handle episode extraction
+    extract_episode_links()
+
+def extract_episode_links():
+    global episode_list_url
 
     WebDriverWait(driver, 10).until(
         EC.visibility_of_element_located((By.XPATH, "//div[@id='anime_episodes']"))
@@ -125,10 +135,28 @@ def fetch_episodes():
     # Store the episode list URL
     episode_list_url = driver.current_url
 
+
 def select_another_episode():
+    global episode_list_url
+
+    # Unlock the episode_entry
+    episode_entry.config(state='normal')
+
+    # Clear episodes_text if it is populated
+    if episodes_text.get("1.0", tk.END).strip():
+        episodes_text.config(state=tk.NORMAL)
+        episodes_text.delete("1.0", tk.END)
+        episodes_text.config(state=tk.DISABLED)
+
+    # Clear m3u8_entry if it is populated
+    if m3u8_entry.get():
+        m3u8_entry.config(state=tk.NORMAL)
+        m3u8_entry.delete(0, tk.END)
+        m3u8_entry.config(state='readonly')
+
     if episode_list_url:
         driver.get(episode_list_url)
-        fetch_episodes()
+        extract_episode_links()
 
 def scrape_m3u8(episode_number):
     try:
@@ -145,6 +173,7 @@ def scrape_m3u8(episode_number):
             EC.presence_of_element_located((By.XPATH, "//span[@class='current']/following-sibling::ul/li[1]"))
         )
         vidcdn_value = vidcdn_value_element.get_attribute('data-value')
+        print(f"scrape_m3u8: {vidcdn_value}")
 
         m3u8_regex = r"(https?://.*?\.m3u8)"
         m3u8_match = re.search(m3u8_regex, vidcdn_value)
@@ -153,22 +182,22 @@ def scrape_m3u8(episode_number):
             root.m3u8_entry.config(state=tk.NORMAL)
             root.m3u8_entry.delete(0, tk.END)
             root.m3u8_entry.insert(0, m3u8_url)
-            root.m3u8_entry.config(state=tk.DISABLED)
+            root.m3u8_entry.config(state='readonly')
             select_another_episode_button.config(state=tk.NORMAL)
         else:
             root.m3u8_entry.config(state=tk.NORMAL)
             root.m3u8_entry.delete(0, tk.END)
             root.m3u8_entry.insert(0, "No m3u8 link found in the URL.")
-            root.m3u8_entry.config(state=tk.DISABLED)
+            root.m3u8_entry.config(state='readonly')
             select_another_episode_button.config(state=tk.NORMAL)
     except Exception as e:
         root.m3u8_entry.config(state=tk.NORMAL)
         root.m3u8_entry.delete(0, tk.END)
         root.m3u8_entry.insert(0, f"Error: {str(e)}")
-        root.m3u8_entry.config(state=tk.DISABLED)
+        root.m3u8_entry.config(state='readonly')
         select_another_episode_button.config(state=tk.NORMAL)
 
-def play_episode():
+def fetch_video():
     episode_number = root.episode_choice.get()
     if not episode_number.isdigit() or int(episode_number) not in range(1, len(root.episode_dict) + 1):
         episodes_text.config(state=tk.NORMAL)
@@ -176,12 +205,11 @@ def play_episode():
         episodes_text.config(state=tk.DISABLED)
         return
 
-    root.m3u8_entry.config(state=tk.NORMAL)
-    root.m3u8_entry.delete(0, tk.END)
-    root.m3u8_entry.insert(0, "Fetching data...")
-    root.m3u8_entry.config(state=tk.DISABLED)
-
     threading.Thread(target=scrape_m3u8, args=(episode_number,)).start()
+
+    # Lock the episode_entry at the end
+    episode_entry.config(state='readonly')
+
 
 def play_mpv():
     m3u8_url = m3u8_entry.get()
@@ -220,7 +248,21 @@ def update_popular_animes():
 root = tk.Tk()
 root.title("Anime Scraper")
 
-# After initializing the main Tk window, you can safely create Tkinter variables.
+# Get screen width and height
+screen_width = root.winfo_screenwidth()
+screen_height = root.winfo_screenheight()
+
+# Set window size as a percentage of screen size (e.g., 70% of the screen size)
+window_width = int(screen_width * 0.4)
+window_height = int(screen_height * 0.4)
+
+# Calculate x and y coordinates for the Tk root window to be centered
+x = int((screen_width / 2) - (window_width / 2))
+y = int((screen_height / 2) - (window_height / 2))
+
+# Set the geometry of the tk root window and center it
+root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+
 sub_var = tk.IntVar()
 dub_var = tk.IntVar()
 
@@ -260,7 +302,7 @@ choice_label.pack()
 choice_entry = tk.Entry(main_frame, width=20)
 choice_entry.pack()
 
-submit_choice_button = tk.Button(main_frame, text="Submit Choice", command=fetch_episodes)
+submit_choice_button = tk.Button(main_frame, text="Fetch Episodes", command=fetch_episodes)
 submit_choice_button.pack()
 
 # Episodes text area
@@ -275,24 +317,28 @@ episode_label.pack()
 episode_entry = tk.Entry(main_frame, width=20)
 episode_entry.pack()
 
-submit_episode_button = tk.Button(main_frame, text="Submit Episode", command=play_episode)
+submit_episode_button = tk.Button(main_frame, text="Fetch Video", command=fetch_video)
 submit_episode_button.pack()
 
-# M3U8 URL display
 m3u8_label = tk.Label(main_frame, text="M3U8:")
 m3u8_label.pack()
-
+# M3U8 URL display
 m3u8_entry = tk.Entry(main_frame, width=80)
 m3u8_entry.pack()
 m3u8_entry.config(state='readonly')
 
-# MPV play button
-play_mpv_button = tk.Button(main_frame, text="Play on MPV", command=play_mpv)
-play_mpv_button.pack()
-
-# Button to select another episode
-select_another_episode_button = tk.Button(main_frame, text="Select Another Episode", state=tk.DISABLED, command=select_another_episode)
-select_another_episode_button.pack()
+# Create a new frame at the bottom for the buttons
+bottom_frame = tk.Frame(main_frame)
+bottom_frame.pack()
+# Create the play_mpv_button and pack it into the bottom_frame
+play_mpv_button = tk.Button(bottom_frame, text="Play on MPV", command=play_mpv)
+play_mpv_button.pack(side=tk.LEFT, padx=5, pady=5)
+# Create the select_another_episode_button and pack it into the bottom_frame
+select_another_episode_button = tk.Button(bottom_frame, text="Select Another Episode", command=select_another_episode)
+select_another_episode_button.pack(side=tk.LEFT, padx=5, pady=5)
+# Create the close button and pack it into the bottom_frame
+close_button = tk.Button(bottom_frame, text="Close", command=root.destroy)
+close_button.pack(side=tk.LEFT, padx=5, pady=5)
 
 # Right side frame for Trending and Popular animes
 right_frame = tk.Frame(root)
