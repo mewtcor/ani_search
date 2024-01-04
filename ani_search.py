@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import scrolledtext, messagebox
+from tkinter import scrolledtext, messagebox, Toplevel
 import threading
 import subprocess
 import re
@@ -9,13 +9,16 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import StaleElementReferenceException
 import time
 import os
 import platform
+import subprocess
+
 
 # Initialize WebDriver
-chromedriver_path = r"C:\Users\mewtc\coding\python\scraping\chromedriver.exe"
-ublock_origin_path = r'C:\Users\mewtc\coding\python\scraping\ublockorigin.crx'
+chromedriver_path = r"/home/m3wt/vesta/python/scrapers/chromedriver"
+ublock_origin_path = r'/home/m3wt/vesta/python/scrapers/ublock.crx'
 chrome_options = Options()
 # chrome_options.add_argument("--headless")
 chrome_options.add_argument("window-size=1920x1080")  # Set a window size
@@ -24,9 +27,15 @@ chrome_options.add_extension(ublock_origin_path)
 service = Service(executable_path=chromedriver_path, log_path=os.devnull)
 driver = webdriver.Chrome(service=service, options=chrome_options)
 
+subprocess.run(["xdotool", "search", "--onlyvisible", "--class", "chrome", "windowminimize"])
+
+
 # Global variable to store the episode list URL
 episode_list_url = None
 search_url = None  # New global variable to store the search URL
+totEpisodes = 0
+initial_episode_count = None
+m3u8_urls_dict = {}
 
 def load_initial_website():
     try:
@@ -43,11 +52,14 @@ def checkbutton_callback(option):
         sub_var.set(0)
         filter_option = 'dub'
     
-    threading.Thread(target=run_scraper, args=(search_entry.get(), results_text, episodes_text, m3u8_entry, filter_option)).start()
+    threading.Thread(target=search_anime, args=(search_entry.get(), results_text, episodes_text, m3u8_entry, filter_option)).start()
 
-def run_scraper(search_term, results_text, episodes_text, m3u8_entry, filter_option=None):
+def search_anime(search_term, results_text, episodes_text, m3u8_entry, filter_option=None):
     try:
         driver.get("https://animension.to/")
+
+        # Show a "Searching..." popup message
+        show_centered_popup_message("Searching...")
 
         search_box = driver.find_element(By.XPATH, "//input[@class='search-live']")
         search_box.send_keys(search_term)
@@ -99,10 +111,14 @@ def run_scraper(search_term, results_text, episodes_text, m3u8_entry, filter_opt
 
 def fetch_episodes():
     global episode_list_url
+
+    # Show a "Searching..." popup message
+    show_centered_popup_message("Searching...")
+
     choice = root.choice.get()
     if not choice.isdigit() or int(choice) - 1 not in range(len(root.title_elements)):
         results_text.config(state=tk.NORMAL)
-        results_text.insert(tk.END, "Invalid choice. Please enter a valid number.\n")
+        results_text.insert(tk.END, "Invalid choice. Please enter a valid choice(number).\n")
         results_text.config(state=tk.DISABLED)
         return
 
@@ -111,6 +127,15 @@ def fetch_episodes():
 
     # Call a new function to handle episode extraction
     extract_episode_links()
+
+def count_total_episodes():
+    global totEpisodes
+    episodes_text_content = episodes_text.get("1.0", tk.END)
+    # Split the content into lines and count the number of non-empty lines
+    totEpisodes = len([line for line in episodes_text_content.splitlines() if line.strip()])
+    
+    # Print the total episode count to the console
+    print(f"Total Episodes: {totEpisodes}")
 
 def extract_episode_links():
     global episode_list_url
@@ -135,6 +160,9 @@ def extract_episode_links():
     # Store the episode list URL
     episode_list_url = driver.current_url
 
+    # Count the total episodes
+    count_total_episodes()
+
 
 def select_another_episode():
     global episode_list_url
@@ -156,13 +184,14 @@ def select_another_episode():
 
     if episode_list_url:
         driver.get(episode_list_url)
+        time.sleep(5)
         extract_episode_links()
 
-def scrape_m3u8(episode_number):
-    try:
-        episode_link = root.episode_dict[episode_number]
-        episode_link.click()
+# Define a dictionary to store the m3u8 URLs
+m3u8_urls_dict = {}
 
+def scrape_m3u8(episode_link):
+    try:
         vidcdn_link_element = WebDriverWait(driver, 10).until(
             EC.element_to_be_clickable((By.XPATH, "//a[normalize-space()='VidCDN']"))
         )
@@ -173,7 +202,6 @@ def scrape_m3u8(episode_number):
             EC.presence_of_element_located((By.XPATH, "//span[@class='current']/following-sibling::ul/li[1]"))
         )
         vidcdn_value = vidcdn_value_element.get_attribute('data-value')
-        print(f"scrape_m3u8: {vidcdn_value}")
 
         m3u8_regex = r"(https?://.*?\.m3u8)"
         m3u8_match = re.search(m3u8_regex, vidcdn_value)
@@ -197,6 +225,8 @@ def scrape_m3u8(episode_number):
         root.m3u8_entry.config(state='readonly')
         select_another_episode_button.config(state=tk.NORMAL)
 
+
+
 def fetch_video():
     episode_number = root.episode_choice.get()
     if not episode_number.isdigit() or int(episode_number) not in range(1, len(root.episode_dict) + 1):
@@ -205,11 +235,14 @@ def fetch_video():
         episodes_text.config(state=tk.DISABLED)
         return
 
-    threading.Thread(target=scrape_m3u8, args=(episode_number,)).start()
+    episode_link = root.episode_dict[episode_number]  # Get the episode link
+    episode_link.click()  # Click the episode link
+
+    # Pass the episode link to the scrape_m3u8 function
+    threading.Thread(target=scrape_m3u8, args=(episode_link,)).start()
 
     # Lock the episode_entry at the end
     episode_entry.config(state='readonly')
-
 
 def play_mpv():
     m3u8_url = m3u8_entry.get()
@@ -244,6 +277,154 @@ def update_popular_animes():
     except Exception as e:
         print("Error updating popular animes:", e)
 
+def extract_episodes_list():
+    global initial_episode_count
+
+    try:
+        episode_number = 1
+
+        # Create a popup window for the "Fetching data..." message
+        fetching_popup = Toplevel(root)
+        fetching_popup.title("Fetching Data")
+        fetching_popup.geometry("300x100")
+
+        # Calculate the center position of the screen
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+        x = (screen_width - 300) // 2
+        y = (screen_height - 100) // 2
+
+        fetching_popup.geometry(f"300x100+{x}+{y}")
+
+        fetching_label = tk.Label(fetching_popup, text="Fetching data...")
+        fetching_label.pack(padx=20, pady=20)
+        fetching_popup.focus_set()
+        fetching_popup.grab_set()
+
+        while True:
+            try:
+                driver.get(episode_list_url)
+                time.sleep(2)
+
+                episode_elements = driver.find_elements(By.XPATH, "//div[@id='anime_episodes']/ul//div[@class='sli-name']/a")
+
+                if episode_number == 1 and initial_episode_count is None:
+                    initial_episode_count = len(episode_elements)
+
+                num_episodes = len(episode_elements)
+
+                if num_episodes == 0 or episode_number > initial_episode_count:
+                    break
+
+                episode_element = episode_elements[num_episodes - episode_number]
+
+                episode_title = episode_element.text
+                print(f"Episode {episode_number}: {episode_title}")
+
+                episode_element.click()
+                time.sleep(2)
+
+                vidcdn(episode_number)
+
+                episode_number += 1
+
+                # Update the message in the popup window
+                fetching_label.config(text=f"Fetching data... (Episode {episode_number}/{initial_episode_count})")
+                fetching_popup.update()
+
+                # Close the popup when the iteration is finished
+                if episode_number > initial_episode_count:
+                    fetching_popup.destroy()
+                    show_centered_popup_message("Videos are ready!")
+
+            except Exception as e:
+                print(f"An error occurred while processing Episode {episode_number}: {str(e)}")
+
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+
+def vidcdn(episode_number):
+    try:
+        vidcdn_link_element = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//a[normalize-space()='VidCDN']"))
+        )
+        
+        vidcdn_link = vidcdn_link_element.get_attribute('href')
+        driver.get(vidcdn_link)
+        extract_m3u8_full(driver, episode_number)
+
+    except Exception as e:
+        print(f"An error occurred in the vidcdn function for Episode {episode_number}: {str(e)}")
+
+def extract_m3u8_full(driver, episode_number):
+    try:
+        m3u8_element = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//span[@class='current']/following-sibling::ul/li[1]"))
+        )
+
+        m3u8_raw = m3u8_element.get_attribute("data-value")
+
+        m3u8_regex = r"(https?://.*?\.m3u8)"
+        m3u8_match = re.search(m3u8_regex, m3u8_raw)
+
+        if m3u8_match:
+            m3u8_urls_dict[episode_number] = m3u8_match.group()
+
+    except Exception as e:
+        print(f"An error occurred in extract_m3u8 for Episode {episode_number}: {str(e)}")
+
+def extract_m3u8(driver, episode_number):
+    try:
+        m3u8_element = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//span[@class='current']/following-sibling::ul/li[1]"))
+        )
+
+        m3u8_raw = m3u8_element.get_attribute("data-value")
+
+        m3u8_regex = r"(https?://.*?\.m3u8)"
+        m3u8_match = re.search(m3u8_regex, m3u8_raw)
+
+        if m3u8_match:
+            m3u8_urls_dict[episode_number] = m3u8_match.group()
+
+    except Exception as e:
+        print(f"An error occurred in extract_m3u8 for Episode {episode_number}: {str(e)}")
+
+# Create a function to display a popup message centered on the screen
+def show_centered_popup_message(message):
+    popup = Toplevel(root)
+    popup.title("Message")
+    popup.geometry("300x100")
+
+    # Calculate the center position of the screen
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    x = (screen_width - 300) // 2
+    y = (screen_height - 100) // 2
+
+    popup.geometry(f"300x100+{x}+{y}")
+
+    label = tk.Label(popup, text=message)
+    label.pack(padx=20, pady=20)
+    popup.focus_set()
+    popup.grab_set()
+
+    # Automatically close the popup after 3 seconds (adjust as needed)
+    popup.after(3000, popup.destroy)
+
+# Function to play video using mpv
+def play_video():
+    episode_number = txt_full_choice.get()
+    if episode_number.isdigit():
+        episode_number = int(episode_number)
+        if episode_number in m3u8_urls_dict:
+            m3u8_url = m3u8_urls_dict[episode_number]
+            subprocess.run(["mpv", m3u8_url])
+        else:
+            show_centered_popup_message("Video not found for the selected episode.")
+    else:
+        show_centered_popup_message("Please enter a valid episode number.")
+
 # Tkinter UI setup
 root = tk.Tk()
 root.title("Anime Scraper")
@@ -254,7 +435,7 @@ screen_height = root.winfo_screenheight()
 
 # Set window size as a percentage of screen size (e.g., 70% of the screen size)
 window_width = int(screen_width * 0.4)
-window_height = int(screen_height * 0.4)
+window_height = int(screen_height * 0.5)
 
 # Calculate x and y coordinates for the Tk root window to be centered
 x = int((screen_width / 2) - (window_width / 2))
@@ -280,8 +461,9 @@ search_label.pack(side=tk.LEFT)
 
 search_entry = tk.Entry(search_frame, width=50)
 search_entry.pack(side=tk.LEFT)
+search_entry.focus_set()
 
-search_button = tk.Button(search_frame, text="Search", command=lambda: threading.Thread(target=run_scraper, args=(search_entry.get(), results_text, episodes_text, m3u8_entry)).start())
+search_button = tk.Button(search_frame, text="Search", command=lambda: threading.Thread(target=search_anime, args=(search_entry.get(), results_text, episodes_text, m3u8_entry)).start())
 search_button.pack(side=tk.LEFT)
 
 sub_checkbutton = tk.Checkbutton(search_frame, text="Sub", variable=sub_var, command=lambda: checkbutton_callback('sub'))
@@ -317,9 +499,13 @@ episode_label.pack()
 episode_entry = tk.Entry(main_frame, width=20)
 episode_entry.pack()
 
-submit_episode_button = tk.Button(main_frame, text="Fetch Video", command=fetch_video)
-submit_episode_button.pack()
-
+# Create a new frame for fetch buttons
+fetch_frame = tk.Frame(main_frame)
+fetch_frame.pack()
+btn_fetch_vide = tk.Button(fetch_frame, text="Fetch Video", command=fetch_video)
+btn_fetch_vide.pack(side=tk.LEFT, padx=5, pady=5)
+btn_fetch_all_vids= tk.Button(fetch_frame, text="Fetch ALL Videos", command=extract_episodes_list)
+btn_fetch_all_vids.pack(side=tk.LEFT, padx=5, pady=5)
 m3u8_label = tk.Label(main_frame, text="M3U8:")
 m3u8_label.pack()
 # M3U8 URL display
@@ -330,31 +516,35 @@ m3u8_entry.config(state='readonly')
 # Create a new frame at the bottom for the buttons
 bottom_frame = tk.Frame(main_frame)
 bottom_frame.pack()
-# Create the play_mpv_button and pack it into the bottom_frame
 play_mpv_button = tk.Button(bottom_frame, text="Play on MPV", command=play_mpv)
 play_mpv_button.pack(side=tk.LEFT, padx=5, pady=5)
-# Create the select_another_episode_button and pack it into the bottom_frame
 select_another_episode_button = tk.Button(bottom_frame, text="Select Another Episode", command=select_another_episode)
 select_another_episode_button.pack(side=tk.LEFT, padx=5, pady=5)
-# Create the close button and pack it into the bottom_frame
 close_button = tk.Button(bottom_frame, text="Close", command=root.destroy)
 close_button.pack(side=tk.LEFT, padx=5, pady=5)
 
 # Right side frame for Trending and Popular animes
 right_frame = tk.Frame(root)
 right_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=10)
-
 # Trending animes frame
 trending_frame = tk.LabelFrame(right_frame, text="Trending")
 trending_frame.pack(fill=tk.BOTH, expand=True)
 trending_text = tk.Text(trending_frame, height=15, state='disabled')
 trending_text.pack(fill=tk.BOTH, expand=True)
-
 # Popular animes frame
 popular_frame = tk.LabelFrame(right_frame, text="Popular")
 popular_frame.pack(fill=tk.BOTH, expand=True)
 popular_text = tk.Text(popular_frame, height=15, state='disabled')
 popular_text.pack(fill=tk.BOTH, expand=True)
+
+
+# Add Entry and Button for playing the video
+full_choice_frame = tk.Frame(main_frame)
+full_choice_frame.pack()
+txt_full_choice = tk.Entry(full_choice_frame, width=10)
+txt_full_choice.pack(side=tk.LEFT)
+btnPlay = tk.Button(full_choice_frame, text="Play video", command=play_video)
+btnPlay.pack(side=tk.LEFT, padx=5, pady=5)
 
 # Load initial website and update lists of animes
 load_initial_website()
