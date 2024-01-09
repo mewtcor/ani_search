@@ -1,0 +1,471 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>895</width>
+    <height>682</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>MainWindow</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <widget class="QFrame" name="frameSearch">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>190</y>
+      <width>871</width>
+      <height>61</height>
+     </rect>
+    </property>
+    <property name="frameShape">
+     <enum>QFrame::StyledPanel</enum>
+    </property>
+    <property name="frameShadow">
+     <enum>QFrame::Raised</enum>
+    </property>
+    <widget class="QLabel" name="lblSearch">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>10</y>
+       <width>111</width>
+       <height>51</height>
+      </rect>
+     </property>
+     <property name="font">
+      <font>
+       <family>Academy Engraved LET</family>
+       <pointsize>18</pointsize>
+      </font>
+     </property>
+     <property name="text">
+      <string>Search Anime:</string>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="btnSearch">
+     <property name="geometry">
+      <rect>
+       <x>680</x>
+       <y>10</y>
+       <width>91</width>
+       <height>41</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Search</string>
+     </property>
+    </widget>
+    <widget class="QCheckBox" name="chkSub">
+     <property name="geometry">
+      <rect>
+       <x>790</x>
+       <y>10</y>
+       <width>51</width>
+       <height>21</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Sub</string>
+     </property>
+    </widget>
+    <widget class="QCheckBox" name="chkDub">
+     <property name="geometry">
+      <rect>
+       <x>790</x>
+       <y>30</y>
+       <width>51</width>
+       <height>21</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Dub</string>
+     </property>
+    </widget>
+    <widget class="QLineEdit" name="lineSearch">
+     <property name="geometry">
+      <rect>
+       <x>130</x>
+       <y>10</y>
+       <width>521</width>
+       <height>41</height>
+      </rect>
+     </property>
+     <property name="font">
+      <font>
+       <family>Arial Black</family>
+       <pointsize>18</pointsize>
+       <italic>false</italic>
+       <bold>true</bold>
+      </font>
+     </property>
+     <property name="text">
+      <string/>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignCenter</set>
+     </property>
+    </widget>
+   </widget>
+   <widget class="QGroupBox" name="grpSearchResults">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>260</y>
+      <width>321</width>
+      <height>281</height>
+     </rect>
+    </property>
+    <property name="title">
+     <string>Search Results</string>
+    </property>
+    <widget class="QTextBrowser" name="txtBrowserSearchResult">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>30</y>
+       <width>301</width>
+       <height>241</height>
+      </rect>
+     </property>
+    </widget>
+   </widget>
+   <widget class="QGroupBox" name="grpTrending">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>10</y>
+      <width>391</width>
+      <height>171</height>
+     </rect>
+    </property>
+    <property name="title">
+     <string>Trending</string>
+    </property>
+    <widget class="QTextBrowser" name="txtBrowserTrending">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>20</y>
+       <width>371</width>
+       <height>141</height>
+      </rect>
+     </property>
+    </widget>
+   </widget>
+   <widget class="QGroupBox" name="grpPopular">
+    <property name="geometry">
+     <rect>
+      <x>470</x>
+      <y>10</y>
+      <width>391</width>
+      <height>171</height>
+     </rect>
+    </property>
+    <property name="title">
+     <string>Popular</string>
+    </property>
+    <widget class="QTextBrowser" name="txtBrowserPopular">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>20</y>
+       <width>371</width>
+       <height>141</height>
+      </rect>
+     </property>
+    </widget>
+   </widget>
+   <widget class="QGroupBox" name="groupBox">
+    <property name="geometry">
+     <rect>
+      <x>340</x>
+      <y>260</y>
+      <width>541</width>
+      <height>301</height>
+     </rect>
+    </property>
+    <property name="title">
+     <string>Anime Selection</string>
+    </property>
+    <widget class="QLabel" name="label">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>40</y>
+       <width>321</width>
+       <height>16</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Your Anime Choice (Episode index number ex. 3</string>
+     </property>
+    </widget>
+    <widget class="QLineEdit" name="lineAnimeChoice">
+     <property name="geometry">
+      <rect>
+       <x>300</x>
+       <y>30</y>
+       <width>51</width>
+       <height>31</height>
+      </rect>
+     </property>
+     <property name="font">
+      <font>
+       <family>Academy Engraved LET</family>
+       <pointsize>18</pointsize>
+      </font>
+     </property>
+     <property name="text">
+      <string/>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignBottom|Qt::AlignHCenter</set>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="btnFetchEpisodes">
+     <property name="geometry">
+      <rect>
+       <x>360</x>
+       <y>20</y>
+       <width>111</width>
+       <height>41</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Fetch Episodes</string>
+     </property>
+    </widget>
+    <widget class="QTextBrowser" name="txtBrowserEpisodes">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>70</y>
+       <width>251</width>
+       <height>181</height>
+      </rect>
+     </property>
+    </widget>
+    <widget class="QGroupBox" name="groupBox_2">
+     <property name="geometry">
+      <rect>
+       <x>270</x>
+       <y>70</y>
+       <width>261</width>
+       <height>181</height>
+      </rect>
+     </property>
+     <property name="title">
+      <string>Single Episode Selection</string>
+     </property>
+     <widget class="QLineEdit" name="lineChosenEpisode">
+      <property name="geometry">
+       <rect>
+        <x>80</x>
+        <y>50</y>
+        <width>111</width>
+        <height>31</height>
+       </rect>
+      </property>
+      <property name="font">
+       <font>
+        <family>Academy Engraved LET</family>
+        <pointsize>18</pointsize>
+       </font>
+      </property>
+      <property name="text">
+       <string/>
+      </property>
+      <property name="alignment">
+       <set>Qt::AlignBottom|Qt::AlignHCenter</set>
+      </property>
+     </widget>
+     <widget class="QLabel" name="label_3">
+      <property name="geometry">
+       <rect>
+        <x>50</x>
+        <y>30</y>
+        <width>171</width>
+        <height>16</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Enter Your Chosen Episode:</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="btnFetchVideo">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>90</y>
+        <width>81</width>
+        <height>81</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Fetch Video</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="btnSelectAnotherEpisode">
+      <property name="geometry">
+       <rect>
+        <x>100</x>
+        <y>90</y>
+        <width>81</width>
+        <height>81</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Select 
+Another 
+Episode</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="btnPlayOnMPV">
+      <property name="geometry">
+       <rect>
+        <x>190</x>
+        <y>90</y>
+        <width>61</width>
+        <height>81</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>MPV</string>
+      </property>
+     </widget>
+    </widget>
+    <widget class="QLabel" name="label_2">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>270</y>
+       <width>41</width>
+       <height>20</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>M3U8:</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+     </property>
+    </widget>
+    <widget class="QLineEdit" name="lineM3u8">
+     <property name="geometry">
+      <rect>
+       <x>60</x>
+       <y>260</y>
+       <width>411</width>
+       <height>31</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string/>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignBottom|Qt::AlignLeading|Qt::AlignLeft</set>
+     </property>
+     <property name="readOnly">
+      <bool>true</bool>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="btnCopy">
+     <property name="geometry">
+      <rect>
+       <x>480</x>
+       <y>260</y>
+       <width>51</width>
+       <height>41</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Copy</string>
+     </property>
+    </widget>
+   </widget>
+   <widget class="QPushButton" name="btnClose">
+    <property name="geometry">
+     <rect>
+      <x>100</x>
+      <y>560</y>
+      <width>121</width>
+      <height>71</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Close</string>
+    </property>
+   </widget>
+   <widget class="QGroupBox" name="groupBox_3">
+    <property name="geometry">
+     <rect>
+      <x>340</x>
+      <y>560</y>
+      <width>541</width>
+      <height>80</height>
+     </rect>
+    </property>
+    <property name="title">
+     <string>Crawler</string>
+    </property>
+    <widget class="QPushButton" name="btnFetchAllVideos">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>20</y>
+       <width>141</width>
+       <height>51</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Fetch All Videos</string>
+     </property>
+    </widget>
+    <widget class="QLineEdit" name="lineAllVidsSelection">
+     <property name="geometry">
+      <rect>
+       <x>230</x>
+       <y>30</y>
+       <width>71</width>
+       <height>31</height>
+      </rect>
+     </property>
+     <property name="font">
+      <font>
+       <family>Academy Engraved LET</family>
+       <pointsize>18</pointsize>
+      </font>
+     </property>
+     <property name="text">
+      <string/>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignBottom|Qt::AlignHCenter</set>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="btnPlayVideo">
+     <property name="geometry">
+      <rect>
+       <x>310</x>
+       <y>20</y>
+       <width>141</width>
+       <height>51</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Play Selection</string>
+     </property>
+    </widget>
+   </widget>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
