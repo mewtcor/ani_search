@@ -16,7 +16,7 @@ import threading
 import re
 import time
 
-#test
+
 # Define a worker class for episode extraction
 class EpisodeExtractorWorker(QObject):
     update_message_signal = Signal(str)
