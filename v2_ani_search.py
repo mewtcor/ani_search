@@ -1,9 +1,10 @@
 import sys
 from PySide6 import QtWidgets
-from PySide6.QtWidgets import QDialog, QLabel, QVBoxLayout
-from PySide6.QtCore import QTimer, Qt, QObject, Slot, QThread
+from PySide6.QtWidgets import QDialog, QLabel, QVBoxLayout, QGraphicsScene, QGraphicsPixmapItem, QMessageBox, QApplication, QMainWindow, QWidget, QPushButton, QHBoxLayout
+from PySide6.QtCore import QTimer, Qt, QObject, Slot, QThread, QUrl, Signal
+from PySide6.QtGui import QPixmap, QImage
+from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 from ui_v2_ani_search import Ui_MainWindow
-from PySide6.QtCore import Signal
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
@@ -15,7 +16,7 @@ import os
 import threading
 import re
 import time
-
+import tempfile
 
 # Define a worker class for episode extraction
 class EpisodeExtractorWorker(QObject):
@@ -36,12 +37,15 @@ class EpisodeExtractorWorker(QObject):
         episode_number = 1
         try:
             while True:
+                print(f"Fetching episode {episode_number}")
                 self.driver.get(self.episode_list_url)
                 time.sleep(2)
                 episode_elements = self.driver.find_elements(By.XPATH, "//div[@id='anime_episodes']/ul//div[@class='sli-name']/a")
 
                 if episode_number == 1 and self.initial_episode_count is None:
                     self.initial_episode_count = len(episode_elements)
+
+                self.update_message_signal.emit(f"Fetching data... (Episode {episode_number}/{self.initial_episode_count})")
 
                 num_episodes = len(episode_elements)
                 if num_episodes == 0 or episode_number > self.initial_episode_count:
@@ -50,13 +54,10 @@ class EpisodeExtractorWorker(QObject):
                 episode_element = episode_elements[num_episodes - episode_number]
                 episode_element.click()
                 time.sleep(2)
-
                 self.vidcdn(episode_number)  # Assuming this is another function you have
-
                 episode_number += 1
-                self.update_message_signal.emit(f"Fetching data... (Episode {episode_number}/{self.initial_episode_count})")
-
                 if episode_number > self.initial_episode_count:
+                    print("Reached the total number of episodes, stopping...")
                     break
 
             self.finished.emit()
@@ -67,9 +68,7 @@ class EpisodeExtractorWorker(QObject):
 
     def vidcdn(self, episode_number):
         try:
-            vidcdn_link_element = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, "//a[normalize-space()='VidCDN']"))
-            )
+            vidcdn_link_element = SeleniumUtils.wait_for_element(self.driver, By.XPATH, "//a[normalize-space()='VidCDN']", wait_type='visible')
             vidcdn_link = vidcdn_link_element.get_attribute('href')
             self.driver.get(vidcdn_link)
 
@@ -82,9 +81,7 @@ class EpisodeExtractorWorker(QObject):
 
     def extract_m3u8_full(self, episode_number):
         try:
-            m3u8_element = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, "//span[@class='current']/following-sibling::ul/li[1]"))
-            )
+            m3u8_element = SeleniumUtils.wait_for_element(self.driver, By.XPATH, "//span[@class='current']/following-sibling::ul/li[1]", wait_type='present')
             m3u8_raw = m3u8_element.get_attribute("data-value")
 
             m3u8_regex = r"(https?://.*?\.m3u8)"
@@ -113,16 +110,37 @@ class MainWindow(QtWidgets.QMainWindow):
         super().__init__()
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
-
-        # ... existing setup ...
-        self.show_popup_signal.connect(self.show_popup)
-
-        # Initialize Selenium WebDriver
+        self.setup_ui_connections()
         self.initialize_webdriver()
-        
-        # Initialize filter_option
-        self.filter_option = None  # Add this line to initialize filter_option
-        # Connects
+        self.load_initial_website()
+        self.update_trending_and_popular_animes()
+
+        self.ui.lineSearch.setFocus()
+        # Disable all QPushButtons and QLineEdits except for lineSearch, btnSearch, and btnClose
+        for widget in self.ui.centralwidget.findChildren(QtWidgets.QPushButton):
+            if widget not in [self.ui.btnSearch, self.ui.btnClose]:
+                widget.setEnabled(False)
+
+        for widget in self.ui.centralwidget.findChildren(QtWidgets.QLineEdit):
+            if widget is not self.ui.lineSearch:
+                widget.setEnabled(False)
+
+        # Initialize QNetworkAccessManager for image downloading
+        self.network_manager = QNetworkAccessManager(self)
+        self.network_manager.finished.connect(self.on_image_download_finished)
+
+        # Global variables
+        self.episode_list_url = None
+        self.search_url = None
+        self.totEpisodes = 0
+        self.initial_episode_count = None
+        self.m3u8_urls_dict = {}
+        self.episode_dict = {}
+        self.title_elements = []
+        self.filter_option = None
+        self.thread = None  # Initialize thread attribute
+
+    def setup_ui_connections(self):
         self.ui.btnClose.clicked.connect(self.close_application)
         self.ui.chkSub.clicked.connect(lambda: self.checkbutton_callback('sub'))
         self.ui.chkDub.clicked.connect(lambda: self.checkbutton_callback('dub'))
@@ -134,56 +152,81 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui.btnPlayOnMPV.clicked.connect(self.play_video)
         self.ui.btnFetchAllVideos.clicked.connect(self.start_extracting_episodes)
         self.ui.btnPlayVideo.clicked.connect(self.play_video_dump)
-        # Connect the signal to a slot that updates the UI        
         self.update_search_results_signal.connect(self.update_search_results)
         self.update_m3u8_url_signal.connect(self.update_m3u8_url)
         self.update_error_message_signal.connect(self.update_error_message)
         self.trigger_extract_episode_links.connect(self.extract_episode_links)
-        
-        # Global variables
-        self.episode_list_url = None
-        self.search_url = None
-        self.totEpisodes = 0
-        self.initial_episode_count = None
-        self.m3u8_urls_dict = {}
-        self.episode_dict = {}
-        self.title_elements = []
+        self.show_popup_signal.connect(self.show_popup)
 
-        # Load initial website and update trending animes
-        self.load_initial_website()
-        self.update_trending_animes()
-        self.update_popular_animes()
 
+    def update_trending_and_popular_animes(self):
+        self.update_anime_list("trending", "//div[@id='sidebar']/div[1]//ul/li//h4/a[@class='series']")
+        self.update_anime_list("popular", "//div[@id='sidebar']/div[2]//ul/li//h4/a[@class='series']")
+
+    def update_anime_list(self, type, xpath):
+        try:
+            elements = self.driver.find_elements(By.XPATH, xpath)
+            animes = [element.text for element in elements]
+            if type == "trending":
+                self.ui.txtBrowserTrending.setPlainText("\n".join(animes))
+            elif type == "popular":
+                self.ui.txtBrowserPopular.setPlainText("\n".join(animes))
+        except Exception as e:
+            print(f"Error updating {type} animes:", e)
+    
     # Slot for updating search results in the UI
     def update_search_results(self, results):
         self.ui.txtBrowserSearchResult.setPlainText(results)
+        # self.update_ui_state_based_on_search_results()
+        # Check if search results contain episodes or the no results message
+        if "No search results found" in results:
+            self.set_search_related_widgets_enabled(False)
+        else:
+            self.set_search_related_widgets_enabled(True)
+            # Set focus to lineAnimeChoice if there are episodes
+            self.ui.lineAnimeChoice.setFocus()
+
+    def set_search_related_widgets_enabled(self, enabled):
+        self.ui.btnFetchEpisodes.setEnabled(enabled)
+        self.ui.lineAnimeChoice.setEnabled(enabled)
+        self.ui.chkDub.setEnabled(enabled)
+        self.ui.chkSub.setEnabled(enabled)
 
     def initialize_webdriver(self):
-        chromedriver_path = os.path.expanduser("~/PythonProjects/scrapers/chromedriver")  # mac
-        ublock_origin_path = os.path.expanduser("~/PythonProjects/scrapers/ublock.crx")  # mac
-        chrome_options = Options()
-        # chrome_options.add_argument("--headless")
-        chrome_options.add_argument("window-size=1920x1080")
-        chrome_options.add_extension(ublock_origin_path)
-        service = Service(executable_path=chromedriver_path, log_path=os.devnull)
+        chrome_options = self.get_chrome_options()
+        service = self.get_chrome_service()
         self.driver = webdriver.Chrome(service=service, options=chrome_options)
+        # self.minimize_browser_window()
 
-        # Minimize Chrome window on macOS
-        # self.minimize_chrome()
+    def get_chrome_options(self):
+        # ublock_origin_path = os.path.expanduser("~/PythonProjects/scrapers/ublock.crx")  # mac
+        ublock_origin_path = "/home/m3wt/vesta/python/scrapers/ublock.crx"
+        chrome_options = Options()
+        chrome_options.add_argument("window-size=1920x1080")
+        # chrome_options.add_argument("--headless")
+        chrome_options.add_extension(ublock_origin_path)
+        return chrome_options
 
-    def minimize_chrome(self):
-        # subprocess.run(["xdotool", "search", "--onlyvisible", "--class", "chrome", "windowminimize"]) # minimize chrome -> this works on linux only
+    def get_chrome_service(self):
+        # chromedriver_path = os.path.expanduser("~/PythonProjects/scrapers/chromedriver")  # mac
+        chromedriver_path = "/home/m3wt/vesta/python/scrapers/chromedriver"
+        return Service(executable_path=chromedriver_path, log_path=os.devnull)
+
+    def minimize_browser_window(self):
+        # Implement platform-specific window minimization
+        # --> linux 
+        subprocess.run(["xdotool", "search", "--onlyvisible", "--class", "chrome", "windowminimize"]) # minimize chrome -> this works on linux only
+        
         #---- this is the minimize function for mac that uses applescript command. No xdotool equivalent for mac unfortunately
-        applescript_command = '''
-        tell application "Google Chrome"
-            activate
-            repeat with theWindow in (every window)
-                tell application "System Events" to keystroke "m" using command down
-            end repeat
-        end tell
-        '''
-        subprocess.run(["osascript", "-e", applescript_command])
-        #--- end of mac minimize
+        # applescript_command = '''
+        # tell application "Google Chrome"
+        #     activate
+        #     repeat with theWindow in (every window)
+        #         tell application "System Events" to keystroke "m" using command down
+        #     end repeat
+        # end tell
+        # '''
+        # subprocess.run(["osascript", "-e", applescript_command])
 
     def load_initial_website(self):
         try:
@@ -218,6 +261,26 @@ class MainWindow(QtWidgets.QMainWindow):
         # Emit signal to show popup when search starts
         self.show_popup_signal.emit("Searching...")
         threading.Thread(target=self.search_anime, args=(search_text, None)).start()
+        
+        # Clear and disable UI elements
+        self.clear_and_lock_ui()
+
+    def clear_and_lock_ui(self):
+        # Loop through and disable/lock QPushButton, QLineEdit, QTextBrowser, QCheckBox, QGraphicsView
+        for widget in self.ui.centralwidget.findChildren(QtWidgets.QWidget):
+            if isinstance(widget, (QtWidgets.QPushButton, QtWidgets.QLineEdit, QtWidgets.QTextBrowser, QtWidgets.QCheckBox, QtWidgets.QGraphicsView)):
+                if widget not in [self.ui.btnSearch, self.ui.btnClose, self.ui.txtBrowserTrending, self.ui.txtBrowserPopular, self.ui.lineSearch]:
+                    widget.setEnabled(False)
+                    if isinstance(widget, (QtWidgets.QLineEdit, QtWidgets.QTextBrowser)):
+                        widget.clear()
+
+    def update_ui_state_based_on_search_results(self):
+        search_results = self.ui.txtBrowserSearchResult.toPlainText()
+        has_episodes = len(search_results.strip()) > 0  # Simple check, modify as needed based on actual content structure
+
+        self.ui.btnFetchEpisodes.setEnabled(has_episodes)
+        self.ui.lineAnimeChoice.setEnabled(has_episodes)
+
 
     def search_anime(self, search_term, filter_option=None):
         try:
@@ -230,9 +293,7 @@ class MainWindow(QtWidgets.QMainWindow):
             submit_button.click()
             # self.ui.btnSearch.click()  # Assuming you have a button named btnSearch
 
-            WebDriverWait(self.driver, 10).until(
-                EC.visibility_of_element_located((By.XPATH, "//ul[@class='ulclear az-list']"))
-            )
+            SeleniumUtils.wait_for_element(self.driver, By.XPATH, "//ul[@class='ulclear az-list']", wait_type='visible')
 
             # After performing the search, update the global variable with the current URL
             self.search_url = self.driver.current_url
@@ -243,9 +304,7 @@ class MainWindow(QtWidgets.QMainWindow):
             elif filter_option == 'dub':
                 self.driver.get(self.search_url + "&dub=1")
 
-            WebDriverWait(self.driver, 10).until(
-                EC.visibility_of_element_located((By.XPATH, "//ul[@class='ulclear az-list']"))
-            )
+            SeleniumUtils.wait_for_element(self.driver, By.XPATH, "//ul[@class='ulclear az-list']", wait_type='visible')
 
             titles_xpath = "//div[@id='listupd']/div/div//a/div[@class='tt']"
             self.title_elements = self.driver.find_elements(By.XPATH, titles_xpath)
@@ -276,6 +335,22 @@ class MainWindow(QtWidgets.QMainWindow):
         # Disable lineChosenEpisode
         self.ui.lineChosenEpisode.setReadOnly(True)
 
+        # Check if lineM3u8 is populated and update UI elements
+        # self.update_ui_state_after_fetch_video()
+
+    def update_ui_state_after_fetch_video(self):
+        m3u8_url = self.ui.lineM3u8.text()
+        print(f"Updating UI state, m3u8 URL: '{m3u8_url}'")  # Debugging line
+
+        if m3u8_url.strip():  # Added strip() to ensure it's not just whitespace
+            self.ui.btnSelectAnotherEpisode.setEnabled(True)
+            self.ui.btnPlayOnMPV.setEnabled(True)
+            self.ui.btnCopy.setEnabled(True)
+        else:
+            self.ui.btnSelectAnotherEpisode.setEnabled(False)
+            self.ui.btnPlayOnMPV.setEnabled(False)
+            self.ui.btnCopy.setEnabled(False)
+
     def fetch_episodes(self):
         self.show_popup_signal.emit("Searching...")
 
@@ -289,15 +364,67 @@ class MainWindow(QtWidgets.QMainWindow):
         selected_title_element.click()
 
         # After successfully loading the episodes and confirming the URL
+        self.update_ui_state_after_fetch_episodes()
         self.episode_list_url = self.driver.current_url
-        # handle episode extraction
-        self.extract_episode_links()
+        self.extract_ani_info()  # Call extract_ani_info method        
+        self.extract_episode_links() # handle episode extraction
+        self.ui.lineChosenEpisode.setFocus()
+
+    def update_ui_state_after_fetch_episodes(self):
+        episodes_text = self.ui.txtBrowserEpisodes.toPlainText()
+        if "Invalid choice. Please enter a valid number." not in episodes_text:
+            self.ui.lineChosenEpisode.setEnabled(True)
+            self.ui.btnFetchVideo.setEnabled(True)
+            self.ui.btnFetchAllVideos.setEnabled(True)
+        else:
+            self.ui.lineChosenEpisode.setEnabled(False)
+            self.ui.btnFetchVideo.setEnabled(False)
+            self.ui.btnFetchAllVideos.setEnabled(False)
+
+    def extract_ani_info(self):
+        try:
+            # Extract and update anime title
+            ani_title_element = self.driver.find_element(By.XPATH, "//h1[@class='entry-title']")
+            self.ui.lblAniTitle.setText(ani_title_element.text)
+
+            # Start image download
+            ani_image_element = self.driver.find_element(By.XPATH, "//div[@id='thumbook']/div[1]//img")
+            ani_image_url = ani_image_element.get_attribute('src')
+            self.network_manager.get(QNetworkRequest(QUrl(ani_image_url)))
+
+            # Extract and update anime description
+            ani_description_element = self.driver.find_element(By.XPATH, "//div[@class='desc']")
+            ani_description = ani_description_element.text.strip()
+            self.ui.txtAniDescription.setPlainText(ani_description)
+
+            # Extract Rating
+            ani_rating_element = self.driver.find_element(By.XPATH, "//div[@class='rating']//strong")
+            self.ui.lblMALScore.setText(ani_rating_element.text)
+
+        except Exception as e:
+            print(f"Error extracting anime info: {e}")
+
+    def on_image_download_finished(self, reply):
+        # Slot to handle the downloaded image data
+        error = reply.error()
+
+        if error == QNetworkReply.NoError:
+            data = reply.readAll()
+            image = QImage()
+            image.loadFromData(data)
+
+            pixmap = QPixmap.fromImage(image)
+            scene = QGraphicsScene(self)
+            item = QGraphicsPixmapItem(pixmap)
+            scene.addItem(item)
+            self.ui.viewAniThumbnail.setScene(scene)
+            self.ui.viewAniThumbnail.fitInView(scene.itemsBoundingRect(), Qt.KeepAspectRatio)
+        else:
+            print(f"Failed to download image: {reply.errorString()}")
 
     def extract_episode_links(self):
         try:
-            WebDriverWait(self.driver, 10).until(
-                EC.visibility_of_element_located((By.XPATH, "//div[@id='anime_episodes']/ul//div[@class='sli-name']/a"))
-            )
+            SeleniumUtils.wait_for_element(self.driver, By.XPATH, "//div[@id='anime_episodes']/ul//div[@class='sli-name']/a", wait_type='visible')
             episode_links = self.driver.find_elements(By.XPATH, "//div[@id='anime_episodes']/ul//div[@class='sli-name']/a")
             print("Number of episode links found:", len(episode_links))  # Debugging print
 
@@ -324,15 +451,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def scrape_m3u8(self, episode_link):
         try:
-            vidcdn_link_element = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, "//a[normalize-space()='VidCDN']"))
-            )
+            vidcdn_link_element = SeleniumUtils.wait_for_element(self.driver, By.XPATH, "//a[normalize-space()='VidCDN']", wait_type='visible')
             vidcdn_link = vidcdn_link_element.get_attribute('href')
             self.driver.get(vidcdn_link)
 
-            vidcdn_value_element = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, "//span[@class='current']/following-sibling::ul/li[1]"))
-            )
+            vidcdn_value_element = SeleniumUtils.wait_for_element(self.driver, By.XPATH, "//span[@class='current']/following-sibling::ul/li[1]", wait_type='present')
             vidcdn_value = vidcdn_value_element.get_attribute('data-value')
 
             m3u8_regex = r"(https?://.*?\.m3u8)"
@@ -349,8 +472,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def update_m3u8_url(self, m3u8_url):
         self.ui.lineM3u8.setText(m3u8_url)
-        self.ui.btnSelectAnotherEpisode.setEnabled(True)
-
+        # self.ui.btnSelectAnotherEpisode.setEnabled(True)
+        self.update_ui_state_after_fetch_video()
     def fetch_video_thread(self):
         try:
             self.fetch_video()
@@ -359,16 +482,21 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def select_another_episode(self):
         self.ui.lineChosenEpisode.clear()
+        self.ui.lineChosenEpisode.setEnabled(True)
         self.ui.lineChosenEpisode.setReadOnly(False)
+        self.ui.lineChosenEpisode.setFocus()
         self.ui.txtBrowserEpisodes.clear()
         self.ui.lineM3u8.clear()
+
+        # Lock the other UI elements
+        self.ui.btnSelectAnotherEpisode.setEnabled(False)
+        self.ui.btnPlayOnMPV.setEnabled(False)
+
         if self.episode_list_url:
             self.driver.get(self.episode_list_url)
 
             try:
-                WebDriverWait(self.driver, 10).until(
-                    EC.visibility_of_element_located((By.XPATH, "//div[@id='anime_episodes']"))
-                )
+                SeleniumUtils.wait_for_element(self.driver, By.XPATH, "//div[@id='anime_episodes']", wait_type='visible')
                 # Emit the signal
                 self.trigger_extract_episode_links.emit()
 
@@ -376,23 +504,28 @@ class MainWindow(QtWidgets.QMainWindow):
                 print("Error while waiting for the episode list page to load:", e)
 
     def play_video(self):
-        print("play_video called")  # Debugging print
-        print("m3u8_urls_dict:", self.m3u8_urls_dict)  # Debugging print
+        print("play_video called")
         episode_number = self.ui.lineChosenEpisode.text()
-        print(f"Episode number: {episode_number}")  # Debugging print
 
         if episode_number.isdigit():
             episode_number = int(episode_number)
             if episode_number in self.m3u8_urls_dict:
                 m3u8_url = self.m3u8_urls_dict[episode_number]
-                print(f"Playing URL: {m3u8_url}")  # Debugging print
-                subprocess.run(["mpv", m3u8_url])
+                print(f"Playing URL: {m3u8_url}")
+
+                # Start MPV player in a separate thread
+                threading.Thread(target=self.launch_mpv_player, args=(m3u8_url,)).start()
             else:
-                print("Video not found for the selected episode.")  # Debugging print
+                print("Video not found for the selected episode.")
                 self.show_centered_popup_message("Video not found for the selected episode.")
         else:
-            print("Please enter a valid episode number.")  # Debugging print
-            self.show_centered_popup_message("Please enter a valid episode number.")\
+            print("Please enter a valid episode number.")
+            self.show_centered_popup_message("Please enter a valid episode number.")
+
+    
+    def launch_mpv_player(self, url):
+        # Start MPV player in a non-blocking way
+        subprocess.Popen(["mpv", url], start_new_session=True)
 
     def play_video_dump(self):
         episode_number = self.ui.lineAllVidsSelection.text()  # Use lineAllVidsSelection for episode number
@@ -408,13 +541,9 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.show_centered_popup_message("Please enter a valid episode number.")
 
-    def handle_m3u8_url_update(self, episode_number, m3u8_url):
-        self.m3u8_urls_dict[episode_number] = m3u8_url
-        print(f"Updated m3u8_urls_dict: {self.m3u8_urls_dict}")
-
     def update_error_message(self, message):
         self.ui.lineM3u8.setText(message)
-        self.ui.btnSelectAnotherEpisode.setEnabled(True)
+        # self.ui.btnSelectAnotherEpisode.setEnabled(True)
         self.ui.txtBrowserEpisodes.append(message)
 
     def on_btnFetchVideo_clicked(self):
@@ -485,36 +614,76 @@ class MainWindow(QtWidgets.QMainWindow):
                 print(f"Error closing WebDriver: {e}")
 
     def start_extracting_episodes(self):
+        self.on_btnFetchAllVideos_clicked()
+
+        if hasattr(self, 'thread') and self.thread and self.thread.isRunning():
+            print("Extraction process is already running.")
+            return
+
+        print("function: start_extracting_episodes test")
         self.thread = QThread()
         self.worker = EpisodeExtractorWorker(self.driver, self.episode_list_url, self.initial_episode_count)
-        self.worker.moveToThread(self.thread)
+
+        # Connect signals and slots
         self.thread.started.connect(self.worker.extract_episodes_list)
         self.worker.update_message_signal.connect(self.update_fetching_popup)
         self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
-        self.thread.finished.connect(self.thread.deleteLater)
-        self.thread.finished.connect(self.on_extraction_finished)
         self.worker.error_signal.connect(self.handle_vidcdn_error)
         self.worker.update_m3u8_url_signal.connect(self.handle_m3u8_url_update)
-        # Move the worker to the thread and start it
-        self.worker.moveToThread(self.thread)
-        self.thread.started.connect(self.worker.extract_episodes_list)
-        self.worker.finished.connect(self.thread.quit)
-        self.worker.finished.connect(self.worker.deleteLater)
-        self.thread.finished.connect(self.thread.deleteLater)
+        # Connect the finished signal of both worker and thread to on_extraction_finished
+        self.worker.finished.connect(self.on_extraction_finished)
+        self.thread.finished.connect(self.on_extraction_finished)
 
-        self.thread.start()
+        # Move the worker to the thread
+        self.worker.moveToThread(self.thread)
+
+        # Handling thread termination
+        self.thread.finished.connect(self.on_thread_finished)
 
         # Initialize and show fetching popup
+        self.show_fetching_popup()
+
+        # Start the thread
+        self.thread.start()
+
+    def on_btnFetchAllVideos_clicked(self):
+        # Lock the buttons
+        self.ui.btnFetchVideo.setEnabled(False)
+        self.ui.btnCopy.setEnabled(False)
+        self.ui.btnPlayOnMPV.setEnabled(False)
+        self.ui.btnSelectAnotherEpisode.setEnabled(False)
+
+        # Clear and lock line edits
+        self.ui.lineM3u8.clear()
+        self.ui.lineM3u8.setEnabled(False)
+        self.ui.lineChosenEpisode.clear()
+        self.ui.lineChosenEpisode.setEnabled(False)
+
+    def on_thread_finished(self):
+        print("Thread finished.")
+        self.thread = None  # Reset the thread to allow for future executions
+
+    def show_fetching_popup(self):
         self.fetching_popup = QDialog(self)
         self.fetching_popup.setWindowTitle("Fetching Data")
         self.fetching_label = QLabel("Fetching data...", self.fetching_popup)
         self.fetching_label.setAlignment(Qt.AlignCenter)
+
         layout = QVBoxLayout(self.fetching_popup)
         layout.addWidget(self.fetching_label)
         self.fetching_popup.setLayout(layout)
         self.fetching_popup.setFixedSize(300, 100)
         self.fetching_popup.show()
+
+    def on_extraction_finished(self):
+        # Close the fetching popup and reset thread and worker
+        if self.fetching_popup:
+            self.fetching_popup.close()
+            self.fetching_popup = None
+        self.thread = None
+        self.worker = None
+        print("Extraction finished.")
 
     @Slot(str)
     def update_fetching_popup(self, message):
@@ -524,7 +693,11 @@ class MainWindow(QtWidgets.QMainWindow):
     def on_extraction_finished(self):
         self.fetching_popup.close()
         self.show_centered_popup_message("Videos are ready!")
-
+        # Unlock btnPlayVideo
+        self.ui.btnPlayVideo.setEnabled(True)
+        self.ui.lineAllVidsSelection.setEnabled(True)
+        self.ui.lineAllVidsSelection.setFocus()
+        
     @Slot(str)
     def handle_vidcdn_error(self, message):
         # Handle the error, maybe display it in the UI
@@ -534,7 +707,48 @@ class MainWindow(QtWidgets.QMainWindow):
     @Slot(int, str)
     def handle_m3u8_url_update(self, episode_number, m3u8_url):
         self.m3u8_urls_dict[episode_number] = m3u8_url
-        print(f"Updated m3u8_urls_dict: {self.m3u8_urls_dict}")
+        # print(f"Updated m3u8_urls_dict: {self.m3u8_urls_dict}")
+
+class SeleniumUtils:
+    @staticmethod
+    def wait_for_element(driver, by, value, timeout=10, wait_type='visible'):
+        if wait_type == 'visible':
+            condition = EC.visibility_of_element_located((by, value))
+        elif wait_type == 'present':
+            condition = EC.presence_of_element_located((by, value))
+        else:
+            raise ValueError("Invalid wait_type specified. Use 'visible' or 'present'.")
+        return WebDriverWait(driver, timeout).until(condition)
+
+    def set_video_output(self):
+        """Set the video output to the video frame based on the operating system."""
+        if sys.platform.startswith('linux'):  # for Linux using the X Server
+            self.player.set_xwindow(self.video_frame.winId())
+        elif sys.platform == "win32":  # for Windows
+            self.player.set_hwnd(self.video_frame.winId())
+        elif sys.platform == "darwin":  # for MacOS
+            self.player.set_nsobject(int(self.video_frame.winId()))
+            
+    def play_video(self):
+        """Play the video."""
+        self.player.play()
+
+    def pause_video(self):
+        """Pause the video."""
+        self.player.pause()
+
+    def stop_video(self):
+        """Stop the video."""
+        self.player.stop()
+
+    def maximize_video(self):
+        """Maximize the video player window."""
+        self.showFullScreen()
+
+    def minimize_video(self):
+        """Minimize the video player window."""
+        self.showNormal()
+
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
