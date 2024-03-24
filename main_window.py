@@ -12,6 +12,7 @@ from selenium.webdriver.common.by import By
 import os, threading,re, subprocess
 from selenium_utils import SeleniumUtils
 from PySide6.QtGui import QPixmap, QImage
+import settings
 
 class MainWindow(QtWidgets.QMainWindow):
     # Define signals
@@ -116,7 +117,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def get_chrome_options(self):
         # ublock_origin_path = os.path.expanduser("~/PythonProjects/scrapers/ublock.crx")  # mac
-        ublock_origin_path = "/Users/enzo/chromedriver/ublockorigin.crx"
+        ublock_origin_path = settings.UBLOCK_ORIGIN_PATH
         chrome_options = Options()
         chrome_options.add_argument("window-size=1920x1080")
         # chrome_options.add_argument("--headless")
@@ -125,7 +126,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def get_chrome_service(self):
         # chromedriver_path = os.path.expanduser("~/PythonProjects/scrapers/chromedriver")  # mac
-        chromedriver_path = "/Users/enzo/chromedriver/chromedriver"
+        chromedriver_path = settings.CHROMEDRIVER_PATH
         return Service(executable_path=chromedriver_path, log_path=os.devnull)
 
     def minimize_browser_window(self):
@@ -146,7 +147,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def load_initial_website(self):
         try:
-            self.driver.get("https://animension.to/")
+            self.driver.get(settings.INITIAL_URL)
             print("Initial website loaded successfully.")
         except Exception as e:
             print(f"Error loading initial website: {str(e)}")
